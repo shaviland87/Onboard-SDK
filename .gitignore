@@ -54,3 +54,7 @@ osdk-core/advanced-sensing-*
 osdk-core/v1-1.0.0
 osdk-core/mo-protocol-*
 osdk-core/waypointv2-core*
+libs/
+osdk-core/djiosdkTargets.cmake
+install_manifest.txt
+
