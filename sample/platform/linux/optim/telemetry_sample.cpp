@@ -36,42 +36,47 @@
 using namespace DJI::OSDK;
 using namespace DJI::OSDK::Telemetry;
 
-void init_log(customOA_ref &in, FILE *file_in){
+void init_log(customOA_ref &in){
   //file has been created
+  if(in.log_to_file_.is_open()){
+    in.log_to_file_ << "time ms, ";
+    in.log_to_file_ << "time ns, ";
+    in.log_to_file_ << "status gear, ";
+    in.log_to_file_ << "status mode, ";
+    in.log_to_file_ << "status flight, ";
+    in.log_to_file_ << "rc gear, ";
+    in.log_to_file_ << "rc mode\n ";
+  }
+  in.log_to_file_.flush();
 
-  fprintf ( file_in,
-          "time ms," 
-          "time ns,"
-          "status gear,"
-          "status mode,"
-          "status flight,"
-          "status error,"
-          "rc gear,"
-          "rc mode\n"
-  );
 }
 
-void logDJI_DATA(customOA_ref &in, FILE *file_in){
+void logDJI_DATA(customOA_ref &in){
   //file_in has been created
-  fprintf ( file_in, "%d,%d,%d,%d,%d,%d,%d,%d\n",
-  in.timestamp.time_ms,   //1 d
-  in.timestamp.time_ns,   //2 d
-  in.status.gear,         //3 d
-  in.status.mode,         //4 d
-  in.status.flight,       //5 d
-  in.status.error,        //6 d
-  in.rc.gear,             //7 d
-  in.rc.mode);            //8 d
+
+  if(in.log_to_file_.is_open()){
+    in.log_to_file_ << in.timestamp.time_ms;
+    in.log_to_file_ << " , ";
+    in.log_to_file_ << in.timestamp.time_ns;
+    in.log_to_file_ << " , ";
+    in.log_to_file_ << std::fixed << (int)in.status.gear;
+    in.log_to_file_ << " , ";
+    in.log_to_file_ << std::fixed << (int)in.status.mode;
+    in.log_to_file_ << " , ";
+    in.log_to_file_ << std::fixed << (int)in.status.flight;
+    in.log_to_file_ << " , ";
+    in.log_to_file_ << std::fixed << (int)in.status.error;
+    in.log_to_file_ << " , ";
+    in.log_to_file_ << std::fixed << (int)in.rc.gear;
+    in.log_to_file_ << " , ";    
+    in.log_to_file_ << std::fixed << (int)in.rc.mode;
+    in.log_to_file_ << "\n";    
+  }
+  in.log_to_file_.flush();
 }
 void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout,  customOA_ref &in){
 
- /* Telemetry::Status         status;
-  Telemetry::GlobalPosition globalPosition;
-  Telemetry::RC             rc;
-  Telemetry::Vector3f       velocity;
-  Telemetry::Quaternion     quaternion;
-  Telemetry::RelativePosition avoidData;
-*/
+
   const int TIMEOUT = 20;
   // Re-set Broadcast frequencies to their default values
   ACK::ErrorCode ack = vehicle->broadcast->setBroadcastFreqDefaults(TIMEOUT); ///not sure if this needs to happen on every loop
@@ -90,7 +95,7 @@ void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout,  customOA_
   in.timestamp      = vehicle->broadcast->getTimeStamp();
   in.gpsInfo        = vehicle->broadcast->getGPSInfo();
 
-
+  
   /*gpsInfo.time...
     uint32_t date;     !< yyyymmdd E.g.20150205 means February 5th,2015 (GMT+8)
     uint32_t time;     !< hhmmss E.g. 90209 means 09:02:09 (GMT+8)
@@ -98,7 +103,8 @@ void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout,  customOA_
   // if(in.gpsInfo.detail.fix) //should check fix and sats --> if both good set date/time
   if(!in.log_file_running_){ 
     //we haven't created a log file yet
-
+    // printf("gps fix is %f , date/time = %d, %d\n",in.gpsInfo.detail.fix, in.gpsInfo.time.date,in.gpsInfo.time.time);
+    // printf("tms %u, tns %u \n",in.timestamp.time_ms,in.timestamp.time_ns); //jumps about 400 ms a round
     //check to see if gps good
     if(in.gpsInfo.detail.fix > 0.5){
       //assume some number for now that says a gps data/time has been started
@@ -107,9 +113,19 @@ void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout,  customOA_
       std::string date = std::to_string(in.gpsInfo.time.date);
       std::string time = std::to_string(in.gpsInfo.time.time);
       in.log_file_name_ = date + time + ".txt"; //log file will be stamped with date/time
+    }else{
+      in.missed_gps_counter_++;
+      printf("cnt %u \n",in.missed_gps_counter_);
+
+      if(in.missed_gps_counter_ > 100){
+        //we skip log name based on gps
+        std::string rando = std::to_string(rand());
+        in.log_file_name_ = "log" + rando + ".txt";
+        in.log_file_running_ = true;
+      }
+
     }
   }
-
 }
 
 bool

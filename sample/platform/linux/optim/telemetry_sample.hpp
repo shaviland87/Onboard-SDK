@@ -33,6 +33,7 @@
 
 // System Includes
 #include <iostream>
+#include <fstream>
 
 // DJI OSDK includes
 #include <dji_vehicle.hpp>
@@ -51,6 +52,8 @@ struct customOA_ref {
   std::string               log_file_name_;
   bool                      log_file_running_;
   uint32_t                  last_time_log_;
+  uint32_t                  missed_gps_counter_;
+  std::ofstream             log_to_file_;
 };
 
 bool subscribeToData(DJI::OSDK::Vehicle* vehiclePtr, int responseTimeout = 1);
@@ -62,7 +65,9 @@ bool getBroadcastData(DJI::OSDK::Vehicle* vehicle, int responseTimeout = 1);
 
 //update custom
 void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout ,  customOA_ref &in);
-void init_log(customOA_ref &in, FILE *file_in);
-void logDJI_DATA(customOA_ref &in, FILE *file_in);
+//void init_log(customOA_ref &in, FILE *file_in);
+//void logDJI_DATA(customOA_ref &in, FILE *file_in);
+void init_log(customOA_ref &in);
+void logDJI_DATA(customOA_ref &in);
 
 #endif // DJIOSDK_TELEMETRYSAMPLE_HPP
