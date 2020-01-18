@@ -1,5 +1,4 @@
 
-
 #include "boson.h"
 
 using namespace cv;
@@ -52,7 +51,9 @@ void AGC_Basic_Linear(cv::Mat input_16, cv::Mat output_8, int height, int width)
 /* ---------------------------- Other Aux functions ---------------------------------------*/
 void cameraSetup(camera_ref &cameraSettings){
 
-	sprintf(cameraSettings.video, "/dev/video1");
+	cameraSettings.cameraSetup = true; 	//set to true...if run into error it will change
+
+	sprintf(cameraSettings.video, "/dev/video0");
 
 	// Printf Sensor defined
 	printf(WHT ">>> " YEL "%s" WHT " selected\n", cameraSettings.thermal_sensor_name);
@@ -61,18 +62,21 @@ void cameraSetup(camera_ref &cameraSettings){
 	printf(WHT ">>> " YEL "%s" WHT " selected\n", cameraSettings.video);
 	if((cameraSettings.fd = open(cameraSettings.video, O_RDWR)) < 0){
 		perror(RED "Error : OPEN. Invalid Video Device" WHT "\n");
-		exit(1);
+		//exit(1);
+		cameraSettings.cameraSetup = false;
 	}
 
 	// Check VideoCapture mode is available
 	if(ioctl(cameraSettings.fd, VIDIOC_QUERYCAP, &cameraSettings.cap) < 0){
 	    perror(RED "ERROR : VIDIOC_QUERYCAP. Video Capture is not available" WHT "\n");
-	    exit(1);
+	    //exit(1);
+		cameraSettings.cameraSetup = false;
 	}
 
 	if(!(cameraSettings.cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)){
 		fprintf(stderr, RED "The device does not handle single-planar video capture." WHT "\n");
-		exit(1);
+		//exit(1);
+		cameraSettings.cameraSetup = false;
 	}
 
 	struct v4l2_format format;
@@ -115,7 +119,8 @@ void cameraSetup(camera_ref &cameraSettings){
 	// request desired FORMAT
 	if(ioctl(cameraSettings.fd, VIDIOC_S_FMT, &format) < 0){
 		perror(RED "VIDIOC_S_FMT" WHT);
-		exit(1);
+		//exit(1);
+		cameraSettings.cameraSetup = false;
 	}
 
 
@@ -131,7 +136,8 @@ void cameraSetup(camera_ref &cameraSettings){
 
 	if(ioctl(cameraSettings.fd, VIDIOC_REQBUFS, &bufrequest) < 0){
 		perror(RED "VIDIOC_REQBUFS" WHT);
-		exit(1);
+		//exit(1);
+		cameraSettings.cameraSetup = false;
 	}
 		// Now that the device knows how to provide its data,
 	// we need to ask it about the amount of memory it needs,
@@ -146,7 +152,8 @@ void cameraSetup(camera_ref &cameraSettings){
 
 	if(ioctl(cameraSettings.fd, VIDIOC_QUERYBUF, &cameraSettings.bufferinfo) < 0){
 		perror(RED "VIDIOC_QUERYBUF" WHT);
-		exit(1);
+		//exit(1);
+		cameraSettings.cameraSetup = false;
 	}
 
 
@@ -160,7 +167,8 @@ void cameraSetup(camera_ref &cameraSettings){
 
 	if(cameraSettings.buffer_start == MAP_FAILED){
 		perror(RED "mmap" WHT);
-		exit(1);
+		//exit(1);
+		cameraSettings.cameraSetup = false;
 	}
 
 	// Fill this buffer with ceros. Initialization. Optional but nice to do
@@ -170,14 +178,102 @@ void cameraSetup(camera_ref &cameraSettings){
 	cameraSettings.type = cameraSettings.bufferinfo.type;
 	if(ioctl(cameraSettings.fd, VIDIOC_STREAMON, &cameraSettings.type) < 0){
 		perror(RED "VIDIOC_STREAMON" WHT);
-		exit(1);
+		//exit(1);
+		cameraSettings.cameraSetup = false;
 	}
 
-	cameraSettings.cameraSetup = true;
+	// Declarations for RAW16 representation
+    // Will be used in case we are reading RAW16 format
+    // Boson320 , Boson 640
+    //Mat thermal16(cameraSettings.height, cameraSettings.width, CV_16U, cameraSettings.buffer_start);   
+    
+	cameraSettings.thermal16.create(cameraSettings.height, cameraSettings.width, CV_16U);
+	cameraSettings.thermal16.data = (uint8_t *)cameraSettings.buffer_start;
+	cameraSettings.t_16 = &cameraSettings.thermal16;// OpenCV input buffer  : Asking for all info: two bytes per pixel (RAW16)  RAW16 mode`
+    cameraSettings.thermal16_linear.create(cameraSettings.height,cameraSettings.width, CV_8U);
 
+    int luma_height ;
+    int luma_width ;
+    int color_space ;
 
+    // Declarations for 8bits YCbCr mode
+    // Will be used in case we are reading YUV format
+    // Boson320, 640 :  4:2:0
+    luma_height = cameraSettings.height+cameraSettings.height/2;
+    luma_width  = cameraSettings.width;
+    color_space = CV_8UC1;
+
+    //Mat thermal_luma(luma_height,luma_width, color_space, cameraSettings.buffer_start);
+	cameraSettings.thermal_luma.create(luma_height,luma_width, color_space);
+	cameraSettings.thermal_luma.data = (uint8_t *)cameraSettings.buffer_start;
+	cameraSettings.t_luma = &cameraSettings.thermal_luma; // Opencv input buffer
+    cameraSettings.thermal_rgb.create(cameraSettings.height, cameraSettings.width, CV_8UC3);
 }
 
+void updateCamera(camera_ref &cameraSettings){
+	 // Put the buffer in the incoming queue.
+      if(ioctl(cameraSettings.fd, VIDIOC_QBUF, &cameraSettings.bufferinfo) < 0){
+        perror(RED "VIDIOC_QBUF" WHT);
+        exit(1);
+      }
+
+      // The buffer's waiting in the outgoing queue.
+      if(ioctl(cameraSettings.fd, VIDIOC_DQBUF, &cameraSettings.bufferinfo) < 0) {
+        perror(RED "VIDIOC_QBUF" WHT);
+        exit(1);
+      }
+
+
+      // -----------------------------
+      // RAW16 DATA
+      if ( cameraSettings.my_image==image_types::rawImage ) {
+        AGC_Basic_Linear(*cameraSettings.t_16, cameraSettings.thermal16_linear, cameraSettings.height, cameraSettings.width);
+
+        // Display thermal after 16-bits AGC... will display an image
+        if (cameraSettings.zoom_enable==0) {
+                      sprintf(cameraSettings.label, "%s : RAW16  Linear", cameraSettings.thermal_sensor_name);
+                          imshow(cameraSettings.label, cameraSettings.thermal16_linear);
+                }
+      }
+      // ---------------------------------
+      // DATA in YUV
+      else {  // Video is in 8 bits YUV
+                cvtColor(*cameraSettings.t_luma, cameraSettings.thermal_rgb, COLOR_YUV2RGB_I420, 0 );   // 4:2:0 family instead of 4:2:2 ...
+              sprintf(cameraSettings.label, "%s : 8bits", cameraSettings.thermal_sensor_name);
+              imshow(cameraSettings.label, cameraSettings.thermal_rgb);
+      }
+
+      // Press 'q' to exit
+      if( waitKey(1) == 'q' ) { // 0x20 (SPACE) ; need a small delay !! we use this to also add an exit option
+        printf(WHT ">>> " RED "'q'" WHT " key pressed. Quitting !\n");
+        //break; //might need to add variable to quit
+      }
+      // Stop if frame limit reached.
+      if (cameraSettings.video_frames>0 && cameraSettings.frame+1 > cameraSettings.video_frames) {
+        printf(WHT ">>>" GRN "'Done'" WHT " Frame limit reached, Quitting !\n");
+        //break;
+      }
+}
+
+void closeCamera(camera_ref &cameraSettings){
+	
+	// Deactivate streaming
+    if( ioctl(cameraSettings.fd, VIDIOC_STREAMOFF, &cameraSettings.type) < 0 ){
+      perror(RED "VIDIOC_STREAMOFF" WHT);
+      exit(1);
+    };
+    
+    close(cameraSettings.fd);
+}
+
+void saveImage(camera_ref &cameraSettings, customOA_ref &in){
+	// saving part:
+		
+	std::string savingName = in.log_folder_name_ +"/Image" + std::to_string(++cameraSettings.imageCounter) + ".jpg";
+
+	//std::string savingName = "/home/optim/Documents/flir_images/Image" + std::to_string(++cameraSettings.imageCounter) + ".jpg";
+	cv::imwrite(savingName, cameraSettings.thermal_rgb);
+}
 /* ---------------------------- Main Function ---------------------------------------*/
 // ENTRY POINT
 int gerp(int argc, char** argv )

@@ -57,4 +57,4 @@ osdk-core/waypointv2-core*
 libs/
 osdk-core/djiosdkTargets.cmake
 install_manifest.txt
-
+.vscode/

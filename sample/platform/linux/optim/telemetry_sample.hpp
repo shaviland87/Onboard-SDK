@@ -49,8 +49,9 @@ struct customOA_ref {
   Telemetry::Vector3f       velocity;
   Telemetry::TimeStamp      timestamp;
   Telemetry::GPSInfo        gpsInfo;
-  std::string               log_file_name_;
+  std::string               log_folder_name_;
   bool                      log_file_running_;
+  bool                      logInitalized_;
   uint32_t                  last_time_log_;
   uint32_t                  missed_gps_counter_;
   std::ofstream             log_to_file_;
@@ -64,9 +65,8 @@ bool subscribeToDataAndSaveLogToFile(DJI::OSDK::Vehicle* vehiclePtr, int respons
 bool getBroadcastData(DJI::OSDK::Vehicle* vehicle, int responseTimeout = 1);
 
 //update custom
+void updateLog(customOA_ref &in);
 void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout ,  customOA_ref &in);
-//void init_log(customOA_ref &in, FILE *file_in);
-//void logDJI_DATA(customOA_ref &in, FILE *file_in);
 void init_log(customOA_ref &in);
 void logDJI_DATA(customOA_ref &in);
 

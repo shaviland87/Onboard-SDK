@@ -1,4 +1,4 @@
-
+#pragma once
 #include <stdio.h>
 #include <fcntl.h>               // open, O_RDWR
 #include <unistd.h>              // close
@@ -9,6 +9,9 @@
 #include <sys/stat.h>
 #include <linux/videodev2.h>
 #include <opencv2/opencv.hpp>
+
+#include "telemetry_sample.hpp"
+
 
 // Types of sensors supported
 enum sensor_types {
@@ -42,11 +45,15 @@ struct camera_ref{
 	int type;
 	int width;
 	int height;
+	cv::Mat thermal16;
 	cv::Mat *t_16;
 	cv::Mat thermal16_linear;
+	cv::Mat thermal_luma;
 	cv::Mat *t_luma;
 	cv::Mat thermal_rgb;
 	bool cameraSetup;
+	int imageCounter;
+	uint32_t last_time_log_;
 };
 #define v_major 1
 #define v_minor 0
@@ -66,3 +73,6 @@ struct camera_ref{
 
 void AGC_Basic_Linear(cv::Mat input_16, cv::Mat output_8, int height, int width);
 void cameraSetup(camera_ref &cameraSettings);
+void updateCamera(camera_ref &cameraSettings);
+void saveImage(camera_ref &cameraSettings, customOA_ref &in);
+void closeCamera(camera_ref &cameraSettings);
