@@ -40,21 +40,44 @@
 
 // Helpers
 #include <dji_linux_helpers.hpp>
+#include <dji_telemetry.hpp>
 
+using namespace DJI::OSDK;
+using namespace DJI::OSDK::Telemetry;
 
+  /* Time, location(lat/lon/alt), attitude, temperature? */
 struct customOA_ref {
   Telemetry::Status         status;
-  Telemetry::GlobalPosition globalPosition;
+  Telemetry::GlobalPosition globalPosition; // has lat/long/alt/health
   Telemetry::RC             rc;
   Telemetry::Vector3f       velocity;
   Telemetry::TimeStamp      timestamp;
   Telemetry::GPSInfo        gpsInfo;
+  Telemetry::Quaternion     quat; //attitude
+  Telemetry::SBUSFullRawData raw_rc; // raw rc -- might be useful
   std::string               log_folder_name_;
   bool                      log_file_running_;
   bool                      logInitalized_;
   uint32_t                  last_time_log_;
   uint32_t                  missed_gps_counter_;
   std::ofstream             log_to_file_;
+};
+
+struct customOA_v2_ref {
+
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_STATUS_FLIGHT>::type      flightStatus;
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_GPS_FUSED>::type          latLon;
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_ALTITUDE_FUSIONED>::type  altitude;
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_RC>::type                 rc;
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_VELOCITY>::type           velocity;
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_QUATERNION>::type         quaternion;
+
+  std::string                             log_folder_name_;
+  bool                                    log_file_running_;
+  bool                                    logInitalized_;
+  uint32_t                                last_time_log_;
+  uint32_t                                missed_gps_counter_;
+  std::ofstream                           log_to_file_;
 };
 
 bool subscribeToData(DJI::OSDK::Vehicle* vehiclePtr, int responseTimeout = 1);
@@ -69,5 +92,10 @@ void updateLog(customOA_ref &in);
 void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout ,  customOA_ref &in);
 void init_log(customOA_ref &in);
 void logDJI_DATA(customOA_ref &in);
+void optimInitializeSubscribe(Vehicle* vehicle, int responseTimeout);
+void updateOptimSubscription(Vehicle* vehicle, int responseTimeout, customOA_v2_ref &in);
+void quitOptimSubscription(Vehicle* vehicle, int responseTimeout);
+
+
 
 #endif // DJIOSDK_TELEMETRYSAMPLE_HPP

@@ -28,7 +28,6 @@
  *
  */
 
-#include <dji_telemetry.hpp>
 #include "telemetry_sample.hpp"
 #include  <signal.h>
 #include  <stdlib.h>
@@ -36,11 +35,12 @@
 #include <sys/stat.h>
 
 
-using namespace DJI::OSDK;
-using namespace DJI::OSDK::Telemetry;
+//using namespace DJI::OSDK;
+//using namespace DJI::OSDK::Telemetry;
 
 void init_log(customOA_ref &in){
   //file has been created
+  /* Time, location(lat/lon/alt), attitude, temperature? */
   if(in.log_to_file_.is_open()){
     in.log_to_file_ << "time ms,";
     in.log_to_file_ << "time ns,";
@@ -48,7 +48,14 @@ void init_log(customOA_ref &in){
     in.log_to_file_ << "status mode,";
     in.log_to_file_ << "status flight,";
     in.log_to_file_ << "rc gear,";
-    in.log_to_file_ << "rc mode\n";
+    in.log_to_file_ << "rc mode,";
+    in.log_to_file_ << "lat,";
+    in.log_to_file_ << "lon,";
+    in.log_to_file_ << "alt,";
+    in.log_to_file_ << "q0,";
+    in.log_to_file_ << "q1,";
+    in.log_to_file_ << "q2,";
+    in.log_to_file_ << "q3\n";
   }
   in.log_to_file_.flush();
 
@@ -73,6 +80,20 @@ void logDJI_DATA(customOA_ref &in){
     in.log_to_file_ << std::fixed << (int)in.rc.gear;
     in.log_to_file_ << ", ";    
     in.log_to_file_ << std::fixed << (int)in.rc.mode;
+        in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.globalPosition.latitude;
+        in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.globalPosition.longitude;
+        in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.globalPosition.altitude;
+        in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.quat.q0;
+        in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.quat.q1;
+        in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.quat.q2;
+        in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.quat.q3;
     in.log_to_file_ << "\n";    
   }
   in.log_to_file_.flush();
@@ -97,6 +118,7 @@ void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout,  customOA_
   in.velocity       = vehicle->broadcast->getVelocity();
   in.timestamp      = vehicle->broadcast->getTimeStamp();
   in.gpsInfo        = vehicle->broadcast->getGPSInfo();
+  in.quat           = vehicle->broadcast->getQuaternion();
 
   
   /*gpsInfo.time...
@@ -451,6 +473,131 @@ subscribeToData(Vehicle* vehicle, int responseTimeout)
   vehicle->subscribe->removePackage(4, responseTimeout);
 
   return true;
+}
+
+void optimInitializeSubscribe(Vehicle* vehicle, int responseTimeout){
+  // We will subscribe to six kinds of data:
+  // 1. Flight Status at 1 Hz
+  // 2. Fused Lat/Lon at 10Hz
+  // 3. Fused Altitude at 10Hz
+  // 4. RC Channels at 10 Hz
+  // 6. Quaternion at 10 Hz
+
+  // Telemetry: Verify the subscription
+  ACK::ErrorCode subscribeStatus;
+  subscribeStatus = vehicle->subscribe->verify(responseTimeout);
+  if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+  {
+    ACK::getErrorCodeMessage(subscribeStatus, __func__);
+    printf("ISSUE WITH SUBSCRIPTION\n");
+  }
+
+  // Package 0: Subscribe to flight status at freq 1 Hz
+  int       pkgIndex        = 0;
+  int       freq            = 1;
+  TopicName topicList1Hz[]  = { TOPIC_STATUS_FLIGHT };
+  int       numTopic        = sizeof(topicList1Hz) / sizeof(topicList1Hz[0]);
+  bool      enableTimestamp = false;
+
+  bool pkgStatus = vehicle->subscribe->initPackageFromTopicList(
+    pkgIndex, numTopic, topicList1Hz, enableTimestamp, freq);
+  if (!(pkgStatus))
+  {
+    printf("ISSUE WITH PACKAGE STATUS\n");
+  }
+  subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, responseTimeout);
+  if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+  {
+    ACK::getErrorCodeMessage(subscribeStatus, __func__);
+    // Cleanup before return
+    vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
+    printf("CLEANUP - remove package status flight \n");
+  }
+///////////////////////////////////////////////////////////////////////////////////
+   // Package 1: Subscribe to Lat/Lon, and Alt at freq 10 Hz
+  pkgIndex                  = 1;
+  freq                      = 10;
+  TopicName topicList10Hz[] = { TOPIC_GPS_FUSED, TOPIC_ALTITUDE_FUSIONED};
+  numTopic                  = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
+  enableTimestamp           = false;
+
+  pkgStatus = vehicle->subscribe->initPackageFromTopicList(
+    pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
+  if (!(pkgStatus))
+  {
+    printf("ISSUE WITH PACKAGE STATUS - GPS FUSED\n");
+  }
+  subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, responseTimeout);
+  if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+  {
+    ACK::getErrorCodeMessage(subscribeStatus, __func__);
+    // Cleanup before return
+    vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
+    printf("CLEAN UP PACKAGE --> GPS FUSION\n");
+  }
+////////////////////////////////////////////////////////////////////////////////////
+  // Package 2: Subscribe to RC Channel and Velocity at freq 50 Hz
+  pkgIndex                  = 2;
+  freq                      = 10;
+  TopicName topicList50Hz[] = { TOPIC_RC, TOPIC_VELOCITY };
+  numTopic                  = sizeof(topicList50Hz) / sizeof(topicList50Hz[0]);
+  enableTimestamp           = false;
+
+  pkgStatus = vehicle->subscribe->initPackageFromTopicList(
+    pkgIndex, numTopic, topicList50Hz, enableTimestamp, freq);
+  if (!(pkgStatus))
+  {
+    printf("ISSUE WITH PACKAGE STATUS RC \n");
+  }
+  subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, responseTimeout);
+  if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+  {
+    ACK::getErrorCodeMessage(subscribeStatus, __func__);
+    // Cleanup before return
+    vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
+    printf("CLEAN UP PACKAGE --> RC\n");
+  }
+/////////////////////////////////////////////////////////////////////////////////////
+  // Package 3: Subscribe to Quaternion at freq 200 Hz.
+  pkgIndex                   = 3;
+  freq                       = 10;
+  TopicName topicList200Hz[] = { TOPIC_QUATERNION };
+  numTopic        = sizeof(topicList200Hz) / sizeof(topicList200Hz[0]);
+  enableTimestamp = false;
+
+  pkgStatus = vehicle->subscribe->initPackageFromTopicList(
+          pkgIndex, numTopic, topicList200Hz, enableTimestamp, freq);
+  if (!(pkgStatus))
+  {
+    printf("ISSUE WITH QUAT PACKAGE STATUS\n");
+  }
+  subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, responseTimeout);
+  if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+  {
+      ACK::getErrorCodeMessage(subscribeStatus, __func__);
+      // Cleanup before return
+      vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
+      printf("CLEAN UP QUAT\n");
+  }
+//////////////////////////////////////////////////////////////////////////////////////
+}
+
+void updateOptimSubscription(Vehicle* vehicle, int responseTimeout, customOA_v2_ref &in){
+
+    in.flightStatus = vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>();
+    in.latLon       = vehicle->subscribe->getValue<TOPIC_GPS_FUSED>();
+    in.altitude     = vehicle->subscribe->getValue<TOPIC_ALTITUDE_FUSIONED>();
+    in.rc           = vehicle->subscribe->getValue<TOPIC_RC>();
+    in.velocity     = vehicle->subscribe->getValue<TOPIC_VELOCITY>();
+    in.quaternion   = vehicle->subscribe->getValue<TOPIC_QUATERNION>();
+
+}
+
+void quitOptimSubscription(Vehicle* vehicle, int responseTimeout){  
+  vehicle->subscribe->removePackage(0, responseTimeout);
+  vehicle->subscribe->removePackage(1, responseTimeout);
+  vehicle->subscribe->removePackage(2, responseTimeout);
+  vehicle->subscribe->removePackage(3, responseTimeout);
 }
 
 void     INThandler(int);
