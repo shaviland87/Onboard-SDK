@@ -232,7 +232,7 @@ void updateCamera(camera_ref &cameraSettings){
         // Display thermal after 16-bits AGC... will display an image
         if (cameraSettings.zoom_enable==0) {
                       sprintf(cameraSettings.label, "%s : RAW16  Linear", cameraSettings.thermal_sensor_name);
-                          imshow(cameraSettings.label, cameraSettings.thermal16_linear);
+                          //imshow(cameraSettings.label, cameraSettings.thermal16_linear);
                 }
       }
       // ---------------------------------
@@ -240,7 +240,7 @@ void updateCamera(camera_ref &cameraSettings){
       else {  // Video is in 8 bits YUV
                 cvtColor(*cameraSettings.t_luma, cameraSettings.thermal_rgb, COLOR_YUV2RGB_I420, 0 );   // 4:2:0 family instead of 4:2:2 ...
               sprintf(cameraSettings.label, "%s : 8bits", cameraSettings.thermal_sensor_name);
-              imshow(cameraSettings.label, cameraSettings.thermal_rgb);
+              //imshow(cameraSettings.label, cameraSettings.thermal_rgb);
       }
 
       // Press 'q' to exit
@@ -267,6 +267,15 @@ void closeCamera(camera_ref &cameraSettings){
 }
 
 void saveImage(camera_ref &cameraSettings, customOA_ref &in){
+	// saving part:
+		
+	std::string savingName = in.log_folder_name_ +"/Image" + std::to_string(++cameraSettings.imageCounter) + ".jpg";
+
+	//std::string savingName = "/home/optim/Documents/flir_images/Image" + std::to_string(++cameraSettings.imageCounter) + ".jpg";
+	cv::imwrite(savingName, cameraSettings.thermal_rgb);
+}
+
+void saveImage(camera_ref &cameraSettings, customOA_v2_ref &in){
 	// saving part:
 		
 	std::string savingName = in.log_folder_name_ +"/Image" + std::to_string(++cameraSettings.imageCounter) + ".jpg";

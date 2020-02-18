@@ -68,9 +68,12 @@ struct customOA_v2_ref {
   DJI::OSDK::Telemetry::TypeMap<TOPIC_STATUS_FLIGHT>::type      flightStatus;
   DJI::OSDK::Telemetry::TypeMap<TOPIC_GPS_FUSED>::type          latLon;
   DJI::OSDK::Telemetry::TypeMap<TOPIC_ALTITUDE_FUSIONED>::type  altitude;
-  DJI::OSDK::Telemetry::TypeMap<TOPIC_RC>::type                 rc;
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_RC>::type   rc;
   DJI::OSDK::Telemetry::TypeMap<TOPIC_VELOCITY>::type           velocity;
   DJI::OSDK::Telemetry::TypeMap<TOPIC_QUATERNION>::type         quaternion;
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_GPS_TIME>::type           gps_time; 
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_GPS_DATE>::type           gps_date; 
+  DJI::OSDK::Telemetry::TypeMap<TOPIC_GPS_DETAILS>::type        gps_details; 
 
   std::string                             log_folder_name_;
   bool                                    log_file_running_;
@@ -94,6 +97,17 @@ void init_log(customOA_ref &in);
 void logDJI_DATA(customOA_ref &in);
 void optimInitializeSubscribe(Vehicle* vehicle, int responseTimeout);
 void updateOptimSubscription(Vehicle* vehicle, int responseTimeout, customOA_v2_ref &in);
+
+//m600 calls
+void init_log(customOA_v2_ref &in);
+void logDJI_DATA(customOA_v2_ref &in);
+void updateLog(customOA_v2_ref &in);
+void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout ,  customOA_v2_ref &in);
+
+//debug calls
+void log_printf( customOA_v2_ref &in, std::string to_be_logged);
+
+
 void quitOptimSubscription(Vehicle* vehicle, int responseTimeout);
 
 

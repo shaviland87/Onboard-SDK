@@ -98,6 +98,7 @@ void logDJI_DATA(customOA_ref &in){
   }
   in.log_to_file_.flush();
 }
+
 void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout,  customOA_ref &in){
 
 
@@ -477,7 +478,7 @@ subscribeToData(Vehicle* vehicle, int responseTimeout)
 
 void optimInitializeSubscribe(Vehicle* vehicle, int responseTimeout){
   // We will subscribe to six kinds of data:
-  // 1. Flight Status at 1 Hz
+  // 1. Flight Status at 1 Hz , gps time
   // 2. Fused Lat/Lon at 10Hz
   // 3. Fused Altitude at 10Hz
   // 4. RC Channels at 10 Hz
@@ -495,7 +496,7 @@ void optimInitializeSubscribe(Vehicle* vehicle, int responseTimeout){
   // Package 0: Subscribe to flight status at freq 1 Hz
   int       pkgIndex        = 0;
   int       freq            = 1;
-  TopicName topicList1Hz[]  = { TOPIC_STATUS_FLIGHT };
+  TopicName topicList1Hz[]  = { TOPIC_STATUS_FLIGHT, TOPIC_GPS_TIME, TOPIC_GPS_DATE, TOPIC_GPS_DETAILS };
   int       numTopic        = sizeof(topicList1Hz) / sizeof(topicList1Hz[0]);
   bool      enableTimestamp = false;
 
@@ -514,37 +515,16 @@ void optimInitializeSubscribe(Vehicle* vehicle, int responseTimeout){
     printf("CLEANUP - remove package status flight \n");
   }
 ///////////////////////////////////////////////////////////////////////////////////
-   // Package 1: Subscribe to Lat/Lon, and Alt at freq 10 Hz
+////////////////////////////////////////////////////////////////////////////////////
+  // Package 2: Subscribe to RC Channel and Velocity at freq 10 Hz
   pkgIndex                  = 1;
   freq                      = 10;
-  TopicName topicList10Hz[] = { TOPIC_GPS_FUSED, TOPIC_ALTITUDE_FUSIONED};
+  TopicName topicList10Hz[] = { TOPIC_RC, TOPIC_VELOCITY, TOPIC_QUATERNION, TOPIC_GPS_FUSED, TOPIC_ALTITUDE_FUSIONED };
   numTopic                  = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
   enableTimestamp           = false;
 
   pkgStatus = vehicle->subscribe->initPackageFromTopicList(
     pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
-  if (!(pkgStatus))
-  {
-    printf("ISSUE WITH PACKAGE STATUS - GPS FUSED\n");
-  }
-  subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, responseTimeout);
-  if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-  {
-    ACK::getErrorCodeMessage(subscribeStatus, __func__);
-    // Cleanup before return
-    vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
-    printf("CLEAN UP PACKAGE --> GPS FUSION\n");
-  }
-////////////////////////////////////////////////////////////////////////////////////
-  // Package 2: Subscribe to RC Channel and Velocity at freq 50 Hz
-  pkgIndex                  = 2;
-  freq                      = 10;
-  TopicName topicList50Hz[] = { TOPIC_RC, TOPIC_VELOCITY };
-  numTopic                  = sizeof(topicList50Hz) / sizeof(topicList50Hz[0]);
-  enableTimestamp           = false;
-
-  pkgStatus = vehicle->subscribe->initPackageFromTopicList(
-    pkgIndex, numTopic, topicList50Hz, enableTimestamp, freq);
   if (!(pkgStatus))
   {
     printf("ISSUE WITH PACKAGE STATUS RC \n");
@@ -557,34 +537,17 @@ void optimInitializeSubscribe(Vehicle* vehicle, int responseTimeout){
     vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
     printf("CLEAN UP PACKAGE --> RC\n");
   }
-/////////////////////////////////////////////////////////////////////////////////////
-  // Package 3: Subscribe to Quaternion at freq 200 Hz.
-  pkgIndex                   = 3;
-  freq                       = 10;
-  TopicName topicList200Hz[] = { TOPIC_QUATERNION };
-  numTopic        = sizeof(topicList200Hz) / sizeof(topicList200Hz[0]);
-  enableTimestamp = false;
-
-  pkgStatus = vehicle->subscribe->initPackageFromTopicList(
-          pkgIndex, numTopic, topicList200Hz, enableTimestamp, freq);
-  if (!(pkgStatus))
-  {
-    printf("ISSUE WITH QUAT PACKAGE STATUS\n");
-  }
-  subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, responseTimeout);
-  if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-  {
-      ACK::getErrorCodeMessage(subscribeStatus, __func__);
-      // Cleanup before return
-      vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
-      printf("CLEAN UP QUAT\n");
-  }
 //////////////////////////////////////////////////////////////////////////////////////
 }
 
 void updateOptimSubscription(Vehicle* vehicle, int responseTimeout, customOA_v2_ref &in){
 
+    //TOPIC_HARD_SYNC -- contains time
+    // 
     in.flightStatus = vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>();
+    in.gps_time     = vehicle->subscribe->getValue<TOPIC_GPS_TIME>();
+    in.gps_date     = vehicle->subscribe->getValue<TOPIC_GPS_DATE>();
+    in.gps_details  = vehicle->subscribe->getValue<TOPIC_GPS_DETAILS>();
     in.latLon       = vehicle->subscribe->getValue<TOPIC_GPS_FUSED>();
     in.altitude     = vehicle->subscribe->getValue<TOPIC_ALTITUDE_FUSIONED>();
     in.rc           = vehicle->subscribe->getValue<TOPIC_RC>();
@@ -596,8 +559,6 @@ void updateOptimSubscription(Vehicle* vehicle, int responseTimeout, customOA_v2_
 void quitOptimSubscription(Vehicle* vehicle, int responseTimeout){  
   vehicle->subscribe->removePackage(0, responseTimeout);
   vehicle->subscribe->removePackage(1, responseTimeout);
-  vehicle->subscribe->removePackage(2, responseTimeout);
-  vehicle->subscribe->removePackage(3, responseTimeout);
 }
 
 void     INThandler(int);
@@ -1015,6 +976,164 @@ subscribeToDataAndSaveLogToFile(Vehicle* vehicle, int responseTimeout)
     return true;
 }
 
+
+
+/////////////////
+//// M600
+void init_log(customOA_v2_ref &in){
+  //file has been created
+  if(in.log_to_file_.is_open()){
+    in.log_to_file_ << "gps time,";
+    in.log_to_file_ << "status flight,";
+    in.log_to_file_ << "rc gear,";
+    in.log_to_file_ << "rc mode,";
+    in.log_to_file_ << "gps-lat,";
+    in.log_to_file_ << "gps-lon,";
+    in.log_to_file_ << "gps-alt,";
+    in.log_to_file_ << "gps-num,";
+    in.log_to_file_ << "alt,";
+    in.log_to_file_ << "q0,";
+    in.log_to_file_ << "q1,";
+    in.log_to_file_ << "q2,";
+    in.log_to_file_ << "q3\n";
+  }
+  in.log_to_file_.flush();
+
+}
+
+void logDJI_DATA(customOA_v2_ref &in){
+  //file_in has been created
+  
+  // in.latLon.altitude
+  // in.latLon.latitude
+  // in.latLon.longitude
+  // in.latLon.visibleSatelliteNumber
+  // in.altitude
+  // in.rc.gear
+  // in.rc.mode
+  // in.velocity.data.x
+  // in.velocity.data.y
+  // in.velocity.data.z
+  // in.quaternion.q0
+  // in.quaternion.q1
+  // in.quaternion.q2
+  // in.quaternion.q3
+  // in.gps_time
+
+  //in.rc.lb2.video
+  //in.rc.lb2.videoPause
+//  printf("video = %d, videoPause is %d \n",in.rc.lb2.video, in.rc.lb2.videoPause);
+//if gear is -5000 --gear is up...record ...-10000 is down
+
+  /*(if(in.rc.gear > -6000){
+  printf("mode is %d, gear is %d \n",in.rc.mode, in.rc.gear); 
+  }*/
+
+  if(in.log_to_file_.is_open()){
+    in.log_to_file_ << in.gps_time;
+    in.log_to_file_ << ", ";
+    in.log_to_file_ << std::fixed << (int)in.flightStatus;
+    in.log_to_file_ << ", ";
+    in.log_to_file_ << std::fixed << (int)in.rc.gear;
+    in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << (int)in.rc.mode;
+    in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.latLon.latitude;
+    in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.latLon.longitude;
+    in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.latLon.altitude;
+    in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.latLon.visibleSatelliteNumber;
+    in.log_to_file_ << ", ";  
+    in.log_to_file_ << std::fixed << in.altitude;
+    in.log_to_file_ << ", ";        
+    in.log_to_file_ << std::fixed << in.quaternion.q0;
+    in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.quaternion.q1;
+    in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.quaternion.q2;
+    in.log_to_file_ << ", ";    
+    in.log_to_file_ << std::fixed << in.quaternion.q3;
+    in.log_to_file_ << "\n";    
+    
+  }
+  in.log_to_file_.flush();
+}
+void updateDJI_DATA(DJI::OSDK::Vehicle* vehicle, int responseTimeout,  customOA_v2_ref &in){
+  updateOptimSubscription( vehicle, responseTimeout, in);
+}
+
+void updateLog(customOA_v2_ref &in){
+
+  if(!in.logInitalized_ && !in.log_file_running_){
+    // log not initalized and not yet running
+    //we haven't created a log file yet
+    //check to see if gps good
+    //printf("gps fix is %f \n",in.gps_details.fix);
+    if( in.gps_details.fix > 0.5){
+      //assume some number for now that says a gps data/time has been started
+      in.log_file_running_  = true;                         //set to true for future ..this will create a log
+      std::string date      = std::to_string(in.gps_date);  //in.gpsInfo.time.date
+      std::string time      = std::to_string(in.gps_time);  //in.gpsInfo.time.time
+      in.log_folder_name_   = date + time ;                 //log file will be stamped with date/time
+    }else
+    {
+      in.missed_gps_counter_++;
+      printf("cnt %u \n",in.missed_gps_counter_);
+
+      if(in.missed_gps_counter_ > 10){
+        //we skip log name based on gps
+        std::string rando     = std::to_string(rand());
+        in.log_folder_name_   = "log" + rando ;
+        in.log_file_running_  = true;
+      }
+
+    }
+
+  }
+
+  if(!in.logInitalized_ && in.log_file_running_){
+      //first loop thru when log file name has been populated
+      // create a log file with data/time name
+      printf("log init\n");
+      in.logInitalized_ = true;
+
+      const int dir_err = mkdir(in.log_folder_name_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+      if (-1 == dir_err)
+      {
+          printf("Error creating directory!n");
+          exit(1);
+      }
+
+      //TBD need to make this variable -- want a new directory to be made for each power up
+      std::string folder_and_file = in.log_folder_name_ + "/DJI_data.txt";
+      in.log_to_file_.open (folder_and_file);  
+      init_log(in);
+    }
+
+    //update dji log
+    if(in.logInitalized_){
+        //log dji data
+        logDJI_DATA(in);
+        printf("logged\n");
+    }
+}
+
+void log_printf( customOA_v2_ref &in, std::string to_be_logged){
+
+  if(in.logInitalized_)
+  {
+    if(in.log_to_file_.is_open())
+    {
+      in.log_to_file_ << to_be_logged;
+      in.log_to_file_ << "\n";
+    }
+      in.log_to_file_.flush();
+  }
+}
+
+////////////////
 
 void  INThandler(int sig)
 {

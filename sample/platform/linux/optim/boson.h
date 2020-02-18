@@ -75,4 +75,6 @@ void AGC_Basic_Linear(cv::Mat input_16, cv::Mat output_8, int height, int width)
 void cameraSetup(camera_ref &cameraSettings);
 void updateCamera(camera_ref &cameraSettings);
 void saveImage(camera_ref &cameraSettings, customOA_ref &in);
+void saveImage(camera_ref &cameraSettings, customOA_v2_ref &in);
+
 void closeCamera(camera_ref &cameraSettings);

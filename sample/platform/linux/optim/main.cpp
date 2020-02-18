@@ -35,7 +35,7 @@
 #include <ratio>
 #include <chrono>
 
-#define USE_DJI_SOFTWARE false
+#define USE_DJI_SOFTWARE true
 
 using namespace DJI::OSDK;
 using namespace DJI::OSDK::Telemetry;
@@ -79,6 +79,38 @@ void time_checker(oa_timeRef &timeRef, camera_ref &camera, customOA_ref &oa){
     
 }
 
+void time_checker(oa_timeRef &timeRef, camera_ref &camera, customOA_v2_ref &oa){
+    
+  //grab current time
+  timeRef.current_time  = high_resolution_clock::now();
+  //std::cout << ms.count() << "ms\n";
+
+  if(oa.rc.gear > -6000)
+  {
+    milliseconds ms_dji   = std::chrono::duration_cast<milliseconds>(timeRef.current_time - timeRef.dji_log_time);
+    milliseconds ms_image = std::chrono::duration_cast<milliseconds>(timeRef.current_time - timeRef.image_log_time);
+    if(ms_dji.count() >= 200){
+      //update log
+      updateLog(oa);
+      timeRef.dji_log_time = timeRef.current_time;
+    }
+
+    if(ms_image.count() >= 200)
+    {
+      //camera.logNow = true;
+      timeRef.image_log_time = timeRef.current_time;
+
+      //update camera log 
+      if(camera.cameraSetup && oa.logInitalized_)
+      {
+        // we want to either save based on DJI remote...or change rate of camera recording based on DJI remote
+        saveImage(camera, oa);
+        printf("save image \n");
+      }
+    }
+  }    
+}
+
 int
 main(int argc, char** argv)
 {
@@ -99,12 +131,21 @@ main(int argc, char** argv)
   cameraSettings.imageCounter     = 0;
   cameraSettings.last_time_log_   = 0;
 
+  #if 0
   customOA_ref oa_data_;
   oa_data_.log_file_running_    = false; //log hasn't started
   oa_data_.log_folder_name_     = "";
   oa_data_.logInitalized_       = false;
   oa_data_.last_time_log_       = 0;
   oa_data_.missed_gps_counter_  = 0;
+  #else
+  customOA_v2_ref oa_data_;
+  oa_data_.log_file_running_    = false; //log hasn't started
+  oa_data_.log_folder_name_     = "";
+  oa_data_.logInitalized_       = false;
+  oa_data_.last_time_log_       = 0;
+  oa_data_.missed_gps_counter_  = 0;
+  #endif
 
   #if USE_DJI_SOFTWARE == true
     if (vehicle == NULL)
@@ -121,6 +162,15 @@ main(int argc, char** argv)
     printf("camera skipped \n");
   }
   ////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////
+// DJI init
+printf("init DJI\n");
+optimInitializeSubscribe(vehicle, 1);
+
+//////////////////////////////////////
+
+
 
   /* initialize random seed: */
   srand (time(NULL));
